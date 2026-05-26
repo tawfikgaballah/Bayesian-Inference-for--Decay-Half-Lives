@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Full Software Decay GUI</title>
+  <link rel="stylesheet" href="css/app.css" />
+
+</head>
+<body>
+  <header>
+    <h1>Interactive Decay Analysis</h1>
+    <div id="status" class="status">Ready</div>
+  </header>
+  <main>
+    <aside class="stack">
+      <div class="panel">
+        <h2>Files</h2>
+        <label>Decay CSV <input id="decayFile" type="file" accept=".csv,text/csv" /></label>
+        <label>Histogram CSV <input id="histFile" type="file" accept=".csv,text/csv" /></label>
+      </div>
+
+      <div class="panel">
+        <h2>Decay Chain</h2>
+        <label>Parent nucleus <input id="parentNucleus" type="text" placeholder="Example: 72Co" /></label>
+        <div class="row">
+          <label>Output unit <select id="outputUnit"></select></label>
+          <label>Decay type <select id="decayType"><option>beta-</option><option>beta+</option></select></label>
+        </div>
+        <div class="note">Daughter channels</div>
+        <div id="daughterChecks" class="checks"></div>
+        <div class="note">Granddaughters via 0n from each selected daughter</div>
+        <div class="checks"><label><input id="includeGd" type="checkbox" checked /> Include</label></div>
+        <div id="granddaughterChecks" class="checks"></div>
+        <button id="buildChain">Build decay chain</button>
+      </div>
+
+      <div class="panel">
+        <h2>Fit Setup</h2>
+        <div class="row">
+          <label><span class="label-text">Bin width (<span class="unit-label">ms</span>)</span> <input id="binWidth" type="number" value="10" step="any" /></label>
+          <label>Likelihood <select id="likelihood"><option>poisson</option><option>normal</option></select></label>
+        </div>
+        <div class="row">
+          <label><span class="label-text">Fit min (<span class="unit-label">ms</span>)</span> <input id="fitMin" type="number" value="0" step="any" /></label>
+          <label><span class="label-text">Fit max (<span class="unit-label">ms</span>)</span> <input id="fitMax" type="number" value="1000" step="any" /></label>
+        </div>
+        <label>Background <select id="backgroundType"><option>constant</option><option>linear</option><option>exponential</option></select></label>
+        <button id="previewFit">Prepare fit and preview model</button>
+      </div>
+
+      <div class="panel">
+        <h2>Notebook Output</h2>
+        <button id="exportConfig" class="secondary">Export PyMC configuration JSON</button>
+        <button id="exportPythonRunner" class="secondary">Export Python model runner</button>
+        <div class="note">The browser GUI prepares the chain, histogram, background estimate, branch defaults, and Bateman preview. Export JSON for inspection, or export a Python runner to reproduce the designed Bayesian model outside the GUI.</div>
+      </div>
+    </aside>
+
+    <section>
+      <div class="tabs">
+        <button class="tab active" data-tab="summaryView">Summary</button>
+        <button class="tab" data-tab="tableView">Chain Table</button>
+        <button class="tab" data-tab="plotView">Histogram Preview</button>
+        <button class="tab" data-tab="bayesDesignView">Bayesian Design</button>
+        <button class="tab" data-tab="runView">Run Progress</button>
+        <button class="tab" data-tab="resultsView">Results</button>
+      </div>
+      <div id="summaryView" class="view active"><pre id="summary"></pre></div>
+      <div id="tableView" class="view"><table id="chainTable"></table></div>
+      <div id="plotView" class="view">
+        <div class="plot-controls">
+          <label>Y scale <select id="yScale"><option value="linear">linear</option><option value="log">log</option></select></label>
+          <button id="resetPlotView" class="secondary">Reset view</button>
+          <div class="plot-hint">Mouse wheel over plot zooms both axes. Wheel over an axis zooms that axis.</div>
+        </div>
+        <input id="plotMin" type="hidden" />
+        <input id="plotMax" type="hidden" />
+        <input id="plotYMin" type="hidden" />
+        <input id="plotYMax" type="hidden" />
+        <canvas id="plot" width="1200" height="650"></canvas>
+      </div>
+      <div id="bayesDesignView" class="view">
+        <div class="panel model-snapshot-panel">
+          <h2>Model Snapshot</h2>
+          <div class="model-snapshot-actions">
+            <button id="updateModelDesign" type="button">Update model from current design</button>
+            <div id="modelDesignStatus" class="note">Prepare the fit preview, adjust the priors, then update the model before exporting or running.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Sampling</h2>
+          <div class="design-grid">
+            <label>Draws <input id="bayesDraws" type="number" value="1000" min="1" /></label>
+            <label>Tune <input id="bayesTune" type="number" value="1000" min="0" /></label>
+            <label>Chains <input id="bayesChains" type="number" value="4" min="1" /></label>
+            <label>Cores <input id="bayesCores" type="number" value="1" min="1" /></label>
+            <label>Target accept <input id="bayesTargetAccept" type="number" value="0.9" min="0.5" max="0.999" step="0.01" /></label>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Priors</h2>
+          <div class="note">Prepare the fit preview first. Lognormal values are entered in natural units; the runner converts them to log-space for PyMC.</div>
+          <div class="note">If reverse background is unchecked, the background prior fields are left blank for manual entry.</div>
+          <div class="checks">
+            <label><input id="useReverseBg" type="checkbox" checked /> Estimate background from reverse correlation</label>
+          </div>
+          <div class="design-grid">
+            <label><span class="label-text">BG min (<span class="unit-label">ms</span>)</span> <input id="bgMin" type="number" value="-1000" step="any" /></label>
+            <label><span class="label-text">BG max (<span class="unit-label">ms</span>)</span> <input id="bgMax" type="number" value="0" step="any" /></label>
+          </div>
+          <div class="checks">
+            <label><input id="useA0Estimate" type="checkbox" checked /> Estimate A0 from early bins</label>
+          </div>
+          <div class="design-grid">
+            <label>A0 bins <input id="a0EarlyBins" type="number" value="5" min="1" step="1" /></label>
+            <label>A0 prior rel sigma <input id="a0RelSigma" type="number" value="0.75" min="0.000001" step="any" /></label>
+          </div>
+          <table id="priorTable" class="prior-table"></table>
+        </div>
+        <div class="panel">
+          <h2>Neutron Branching</h2>
+          <label>Branching mode
+            <select id="branchingMode">
+              <option value="fixed">fixed</option>
+              <option value="dirichlet">dirichlet</option>
+              <option value="softmax">softmax</option>
+              <option value="normalized_raw">normalized_raw</option>
+            </select>
+          </label>
+          <table id="branchTable" class="prior-table"></table>
+        </div>
+        <div class="panel">
+          <h2>Granddaughter Branches</h2>
+          <div class="note">Defaults are fixed at 1. Uniform ranges must stay between 0 and 1.</div>
+          <table id="gdBranchTable" class="prior-table"></table>
+        </div>
+        <div class="panel">
+          <h2>Posterior Plot Variables</h2>
+          <div class="plot-var-actions">
+            <button id="plotDistAll" type="button" class="secondary">All distributions</button>
+            <button id="plotDistNone" type="button" class="secondary">No distributions</button>
+            <button id="plotCornerAll" type="button" class="secondary">All corner</button>
+            <button id="plotCornerNone" type="button" class="secondary">No corner</button>
+          </div>
+          <table id="posteriorVarTable" class="prior-table posterior-var-table"></table>
+        </div>
+      </div>
+      <div id="runView" class="view">
+        <div class="panel">
+          <h2>Run Model</h2>
+          <button id="runBayesian">Run Bayesian model</button>
+          <div class="note">Run this page through <code>python full_software_gui.py</code>. Directly opening the HTML file can design and preview, but cannot start PyMC.</div>
+        </div>
+        <div id="progressLog" class="progress-box">No model run yet.</div>
+      </div>
+      <div id="resultsView" class="view">
+        <div class="results-layout">
+          <div class="result-section">
+            <h2>Posterior Predictive Check</h2>
+            <img id="ppcPlot" class="result-image" alt="Posterior predictive check" />
+          </div>
+          <div class="result-section">
+            <h2>Posterior Distributions</h2>
+            <img id="distPlot" class="result-image" alt="Posterior distributions" />
+          </div>
+          <div class="result-section">
+            <h2>Corner Plot</h2>
+            <img id="cornerPlot" class="result-image" alt="Corner plot" />
+          </div>
+          <div class="result-section">
+            <h2>Posterior Summary</h2>
+          </div>
+          <div class="result-section">
+            <h2>Saved InferenceData</h2>
+            <div id="ncPath" class="note">No NetCDF file saved yet.</div>
+          </div>
+          <table id="resultSummary"></table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="isomerDialog">
+    <div class="modal-head"><strong id="isomerTitle">Choose state</strong></div>
+    <div class="modal-body"><table id="isomerTable"></table></div>
+    <div class="modal-actions">
+      <button id="cancelIsomer" class="secondary">Cancel</button>
+      <button id="useIsomer">Use selected state</button>
+    </div>
+  </dialog>
+
+  <script src="js/bateman.js"></script>
+  <script src="js/python_exporter.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
