@@ -1,0 +1,10 @@
+numpy
+pandas
+matplotlib
+pymc
+pytensor
+arviz
+corner
+netCDF4
+h5netcdf
+pyinstaller

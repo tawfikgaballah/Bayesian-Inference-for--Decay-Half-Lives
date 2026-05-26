@@ -1,0 +1,1 @@
+recursive-include src/full_software_gui_app/assets *.html *.css *.js

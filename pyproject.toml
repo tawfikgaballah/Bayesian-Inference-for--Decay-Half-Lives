@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "full-software-gui-app"
+version = "0.1.0"
+description = "Standalone browser GUI for full_software decay-chain Bayesian analysis"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "pandas",
+  "matplotlib",
+  "pymc",
+  "pytensor",
+  "arviz",
+  "corner",
+  "netCDF4",
+  "h5netcdf",
+]
+
+[project.scripts]
+full-software-gui = "full_software_gui_app.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+full_software_gui_app = [
+  "assets/index.html",
+  "assets/css/*.css",
+  "assets/js/*.js",
+]
