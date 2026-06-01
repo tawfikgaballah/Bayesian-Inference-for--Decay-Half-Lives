@@ -1,7 +1,7 @@
 const units = { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600, d: 86400, y: 365.25 * 86400 };
     const validUnits = Object.keys(units);
     const requiredDecayColumns = ["z","n","name","levelEnergy(MeV)","halflife","halflifeUnit","halflifeUncertainty","decayMode","branchingRatio","branchingRatioUncertainty"];
-    const state = { decayRows: [], histRows: [], rebinnedRows: [], chain: [], fitRows: [], modelCurve: [], config: null, modelPayload: null, modelPayloadDirty: true, branchDraft: null, granddaughterBranchDraft: null, bayesianJob: null, bayesianResult: null, plotFrame: null, plotVarSelection: { distributions: [], corner: [], names: [], touched: false } };
+    const state = { decayRows: [], histRows: [], rebinnedRows: [], chain: [], fitRows: [], modelCurve: [], config: null, modelPayload: null, modelPayloadDirty: true, branchDraft: null, granddaughterBranchDraft: null, bayesianJob: null, bayesianRunActive: false, lastBayesianPayload: null, bayesianResult: null, plotFrame: null, plotVarSelection: { distributions: [], corner: [], names: [], touched: false } };
 
     const $ = id => document.getElementById(id);
     const status = text => $("status").textContent = text;
@@ -1390,19 +1390,21 @@ const units = { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600, d: 86400, y:
       return normalizeBranchObject(config.daughter_branches || {});
     }
 
-    async function runBayesianModel() {
-      if (!state.config || !state.fitRows.length) return alert("Prepare the fit preview first.");
+    function setBayesianRunControls(running) {
+      state.bayesianRunActive = running;
+      const runButton = $("runBayesian");
+      const cancelButton = $("cancelBayesian");
+      const rerunButton = $("rerunBayesian");
+      if (runButton) runButton.disabled = running;
+      if (cancelButton) cancelButton.disabled = !running || !state.bayesianJob;
+      if (rerunButton) rerunButton.disabled = running || !state.lastBayesianPayload;
+    }
+
+    async function submitBayesianPayload(payload, label = "Submitting Bayesian model...") {
       const logBox = $("progressLog");
-      logBox.textContent = "Submitting Bayesian model...\n";
+      logBox.textContent = `${label}\n`;
       activateTab("runView");
-      let payload;
-      try {
-        payload = currentModelPayload({ forceUpdate: true, quiet: false });
-      } catch (error) {
-        logBox.textContent = error.message;
-        alert(error.message);
-        return;
-      }
+      setBayesianRunControls(true);
       try {
         const response = await fetch("/api/run-bayesian", {
           method: "POST",
@@ -1412,9 +1414,45 @@ const units = { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600, d: 86400, y:
         if (!response.ok) throw new Error(await response.text());
         const data = await response.json();
         state.bayesianJob = data.job_id;
+        state.lastBayesianPayload = cloneData(payload);
+        setBayesianRunControls(true);
         pollBayesianJob(data.job_id);
       } catch (error) {
         logBox.textContent += `\nCould not start the model run.\n${error.message}\n\nStart the GUI with python full_software_gui.py so the local Python runner is available.`;
+        state.bayesianJob = null;
+        setBayesianRunControls(false);
+      }
+    }
+
+    async function runBayesianModel() {
+      if (!state.config || !state.fitRows.length) return alert("Prepare the fit preview first.");
+      let payload;
+      try {
+        payload = currentModelPayload({ forceUpdate: true, quiet: false });
+      } catch (error) {
+        $("progressLog").textContent = error.message;
+        alert(error.message);
+        return;
+      }
+      submitBayesianPayload(payload);
+    }
+
+    function rerunBayesianModel() {
+      if (!state.lastBayesianPayload) return alert("No previous Bayesian model run is available to rerun.");
+      submitBayesianPayload(cloneData(state.lastBayesianPayload), "Submitting previous Bayesian model...");
+    }
+
+    async function cancelBayesianModel() {
+      if (!state.bayesianJob || !state.bayesianRunActive) return;
+      const jobId = state.bayesianJob;
+      $("cancelBayesian").disabled = true;
+      $("progressLog").textContent += "\nCancel requested. Waiting for the runner to stop...\n";
+      try {
+        const response = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+        if (!response.ok) throw new Error(await response.text());
+      } catch (error) {
+        $("progressLog").textContent += `\nCould not request cancellation: ${error.message}`;
+        setBayesianRunControls(true);
       }
     }
 
@@ -1422,17 +1460,27 @@ const units = { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600, d: 86400, y:
       const logBox = $("progressLog");
       const response = await fetch(`/api/jobs/${jobId}`);
       const job = await response.json();
+      if (state.bayesianJob !== jobId) return;
       logBox.textContent = (job.log || []).join("\n");
       logBox.scrollTop = logBox.scrollHeight;
-      status(job.status === "complete" ? "Bayesian model complete." : job.status === "error" ? "Bayesian model failed." : "Bayesian model running...");
+      status(job.status === "complete" ? "Bayesian model complete." : job.status === "error" ? "Bayesian model failed." : job.status === "canceled" ? "Bayesian model canceled." : job.status === "canceling" ? "Canceling Bayesian model..." : "Bayesian model running...");
       if (job.status === "complete") {
         state.bayesianResult = job.result;
+        state.bayesianJob = null;
+        setBayesianRunControls(false);
         renderBayesianResults(job.result);
         activateTab("resultsView");
         return;
       }
       if (job.status === "error") {
         logBox.textContent += `\n\n${job.error || "Unknown error"}`;
+        state.bayesianJob = null;
+        setBayesianRunControls(false);
+        return;
+      }
+      if (job.status === "canceled") {
+        state.bayesianJob = null;
+        setBayesianRunControls(false);
         return;
       }
       setTimeout(() => pollBayesianJob(jobId), 1500);
@@ -1611,11 +1659,14 @@ const units = { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600, d: 86400, y:
       $("exportConfig").addEventListener("click", exportConfig);
       $("exportPythonRunner").addEventListener("click", exportPythonRunner);
       $("runBayesian").addEventListener("click", runBayesianModel);
+      $("cancelBayesian").addEventListener("click", cancelBayesianModel);
+      $("rerunBayesian").addEventListener("click", rerunBayesianModel);
       $("resetPlotView").addEventListener("click", fullPlotRange);
       $("plot").addEventListener("wheel", zoomPlotWithMouse, { passive: false });
       $("yScale").addEventListener("change", fullPlotRange);
       document.querySelectorAll(".tab").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
       $("summary").textContent = "Load the decay CSV, choose a parent nucleus, build the chain, then load a histogram and preview the Bateman fit.";
+      setBayesianRunControls(false);
       updateUnitLabels();
     }
     function updateUnitLabels() {
@@ -1649,6 +1700,8 @@ const units = { ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600, d: 86400, y:
       collectBayesianDesign,
       updateModelDesignSnapshot,
       runBayesianModel,
+      cancelBayesianModel,
+      rerunBayesianModel,
       exportPythonRunner
     });
     init();

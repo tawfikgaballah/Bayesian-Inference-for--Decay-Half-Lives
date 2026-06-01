@@ -149,7 +149,11 @@
       <div id="runView" class="view">
         <div class="panel">
           <h2>Run Model</h2>
-          <button id="runBayesian">Run Bayesian model</button>
+          <div class="run-actions">
+            <button id="runBayesian">Run Bayesian model</button>
+            <button id="cancelBayesian" type="button" class="secondary danger" disabled>Cancel run</button>
+            <button id="rerunBayesian" type="button" class="secondary" disabled>Rerun last model</button>
+          </div>
           <div class="note">Run this page through <code>python full_software_gui.py</code>. Directly opening the HTML file can design and preview, but cannot start PyMC.</div>
         </div>
         <div id="progressLog" class="progress-box">No model run yet.</div>

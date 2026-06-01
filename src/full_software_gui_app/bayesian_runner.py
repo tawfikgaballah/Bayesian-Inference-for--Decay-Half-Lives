@@ -8,12 +8,20 @@ from .bateman import daughter_mod, granddaughter_mod, int_exp, parent_mod
 from .results import build_and_save_results
 
 
+class BayesianRunCanceled(Exception):
+    """Raised when a user asks the local runner to stop."""
+
+
 def run_bayesian_job(job_id, payload, job, result_dir=None):
     job_started = time.monotonic()
 
     def log(message):
         elapsed = time.monotonic() - job_started
         job["log"].append(f"{elapsed:7.1f}s  {message}")
+
+    def check_cancel():
+        if job.get("cancel_requested"):
+            raise BayesianRunCanceled("Bayesian model run canceled by user.")
 
     def heartbeat(label, interval=15.0):
         state = {"running": True, "started": time.monotonic()}
@@ -35,12 +43,14 @@ def run_bayesian_job(job_id, payload, job, result_dir=None):
 
     try:
         log("Importing Bayesian libraries...")
+        check_cancel()
         import arviz as az
         import inspect
         import numpy as np
         import pymc as pm
         import pytensor.tensor as pt
 
+        check_cancel()
         config = payload["config"]
         rows = payload["fit_rows"]
         design = payload.get("design", {})
@@ -58,6 +68,7 @@ def run_bayesian_job(job_id, payload, job, result_dir=None):
             f"time {float(np.min(x)):.6g} to {float(np.max(x)):.6g} {unit}, "
             f"total counts {float(np.sum(y)):.6g}."
         )
+        check_cancel()
 
         def make_prior(name, spec, positive=False):
             dist = str(spec.get("dist", "normal")).lower()
@@ -327,6 +338,7 @@ def run_bayesian_job(job_id, payload, job, result_dir=None):
             sample_progress = {"last_log": 0.0}
 
             def sample_callback(trace, draw):
+                check_cancel()
                 try:
                     now = time.monotonic()
                     draw_idx = int(getattr(draw, "draw_idx", 0))
@@ -354,13 +366,16 @@ def run_bayesian_job(job_id, payload, job, result_dir=None):
                 sample_kwargs["callback"] = sample_callback
             stop_heartbeat = heartbeat("Sampling posterior")
             try:
+                check_cancel()
                 idata = pm.sample(**sample_kwargs)
             finally:
                 stop_heartbeat()
+            check_cancel()
             log(f"Posterior sampling finished in {time.monotonic() - sample_started:.1f}s.")
 
             ppc_obs = None
             try:
+                check_cancel()
                 chain_count = int(idata.posterior.sizes.get("chain", 1))
                 draw_count = int(idata.posterior.sizes.get("draw", 1))
                 max_ppc_draws = 800
@@ -375,6 +390,7 @@ def run_bayesian_job(job_id, payload, job, result_dir=None):
                 ppc_started = time.monotonic()
                 stop_ppc_heartbeat = heartbeat("Posterior predictive sampling")
                 try:
+                    check_cancel()
                     ppc_data = pm.sample_posterior_predictive(
                         ppc_trace,
                         var_names=["obs"],
@@ -383,11 +399,15 @@ def run_bayesian_job(job_id, payload, job, result_dir=None):
                     )
                 finally:
                     stop_ppc_heartbeat()
+                check_cancel()
                 ppc_obs = np.asarray(ppc_data.get("obs")) if "obs" in ppc_data else None
                 log(f"Posterior predictive sampling finished in {time.monotonic() - ppc_started:.1f}s.")
+            except BayesianRunCanceled:
+                raise
             except Exception as ppc_exc:
                 log(f"Posterior predictive plot will be skipped: {ppc_exc}")
 
+        check_cancel()
         log("Preparing and saving result artifacts...")
         job["result"] = build_and_save_results(
             job_id=job_id,
@@ -405,6 +425,10 @@ def run_bayesian_job(job_id, payload, job, result_dir=None):
         )
         job["status"] = "complete"
         log("Complete.")
+    except BayesianRunCanceled as exc:
+        job["status"] = "canceled"
+        job["error"] = None
+        log(str(exc))
     except Exception:
         job["status"] = "error"
         job["error"] = traceback.format_exc()

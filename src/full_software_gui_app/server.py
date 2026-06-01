@@ -29,6 +29,21 @@ class BayesianRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self) -> None:
+        if self.path.startswith("/api/jobs/") and self.path.endswith("/cancel"):
+            job_id = self.path.split("/")[-2]
+            job = self.jobs.get(job_id)
+            if job is None:
+                self._send_json({"error": "Unknown job"}, 404)
+                return
+            if job.get("status") in {"complete", "error", "canceled"}:
+                self._send_json(job)
+                return
+            job["cancel_requested"] = True
+            job["status"] = "canceling"
+            job.setdefault("log", []).append("Cancel requested by user.")
+            self._send_json(job)
+            return
+
         if self.path != "/api/run-bayesian":
             self._send_json({"error": "Unknown endpoint"}, 404)
             return
@@ -46,6 +61,7 @@ class BayesianRequestHandler(SimpleHTTPRequestHandler):
             "log": ["Queued Bayesian model run."],
             "result": None,
             "error": None,
+            "cancel_requested": False,
         }
         worker = threading.Thread(
             target=run_bayesian_job,
