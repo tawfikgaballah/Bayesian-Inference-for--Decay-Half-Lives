@@ -1,20 +1,117 @@
-# Full Software Decay GUI Standalone Package
+# Bayesian Inference for Beta-Decay Half-Lives
 
-This folder is a standalone, package-style version of the GUI. The original `full_software_gui.py` and `full_software_gui.html` files in the parent folder are not modified.
+This repository contains a standalone GUI for designing and running Bayesian
+beta-decay half-life analyses. The GUI prepares the decay chain, rebins and
+previews histogram data, builds the PyMC model design, runs the Bayesian
+sampler, saves result artifacts, and can export a standalone Python script for
+the designed model.
 
-## Layout
+The original notebook/source files outside this package are not required to run
+the standalone GUI.
 
-- `src/full_software_gui_app/server.py` starts the local browser GUI server and exposes the API endpoints.
-- `src/full_software_gui_app/bayesian_runner.py` builds/runs the PyMC model.
-- `src/full_software_gui_app/results.py` creates summaries/plots and saves all result artifacts.
+## Repository Layout
+
+- `data/nndc_nudat_data_export.csv` is the included literature decay-data source.
+- `src/full_software_gui_app/server.py` starts the local GUI server and API.
+- `src/full_software_gui_app/bayesian_runner.py` builds and runs the PyMC model.
+- `src/full_software_gui_app/results.py` saves posterior summaries, plots, data,
+  and NetCDF InferenceData output.
 - `src/full_software_gui_app/bateman.py` contains the PyMC Bateman equations.
-- `src/full_software_gui_app/assets/index.html` is the GUI shell.
-- `src/full_software_gui_app/assets/css/app.css` contains the UI styles.
-- `src/full_software_gui_app/assets/js/app.js` contains the browser-side GUI logic.
+- `src/full_software_gui_app/assets/` contains the GUI HTML, CSS, and JavaScript.
 - `scripts/` contains install, run, and compile helpers.
-- `Makefile` provides `install`, `run`, `compile`, and `clean` targets.
+- `Makefile` provides Linux/WSL/macOS targets for install, run, compile, and clean.
 
-## Linux / WSL / macOS
+## Literature Decay Data
+
+The included file
+
+```text
+data/nndc_nudat_data_export.csv
+```
+
+is the literature input table used by the GUI to look up parent, daughter, and
+granddaughter states. It was exported from NNDC/NuDat-style decay information.
+
+You can replace this file with a different literature source, but the CSV must
+keep the same column names and meanings. The GUI does not require the filename
+to be identical because the file is selected manually, but the structure must
+match.
+
+Required columns:
+
+```text
+z
+n
+name
+levelEnergy(MeV)
+halflife
+halflifeUnit
+halflifeUncertainty
+decayMode
+branchingRatio
+branchingRatioUncertainty
+```
+
+Column meanings:
+
+- `z`: proton number of the nucleus.
+- `n`: neutron number of the nucleus.
+- `name`: nucleus name, for example `72Co`.
+- `levelEnergy(MeV)`: state or isomer level energy in MeV.
+- `halflife`: half-life value for that state.
+- `halflifeUnit`: half-life unit. Supported GUI units include `ns`, `us`, `ms`,
+  `s`, `m`, `h`, `d`, and `y`.
+- `halflifeUncertainty`: uncertainty on the half-life in the same unit as
+  `halflifeUnit`.
+- `decayMode`: decay mode, for example beta-minus, beta-minus delayed neutron,
+  beta-minus delayed 2-neutron, etc. The GUI normalizes common beta-minus text
+  encodings.
+- `branchingRatio`: branching ratio in percent, not fraction. For example,
+  enter `25` for 25 percent.
+- `branchingRatioUncertainty`: uncertainty on the branching ratio in percent.
+
+Each nucleus can appear in multiple rows because each row represents one decay
+mode or branch for a particular state. If a nucleus has multiple states/isomers,
+the GUI asks which state to use.
+
+## Histogram Data
+
+The histogram CSV is the experimental time-correlation histogram. It is loaded
+separately from the literature decay-data file.
+
+Required histogram columns:
+
+```text
+BinCenter
+BinContent
+```
+
+Optional histogram column:
+
+```text
+BinWidth
+```
+
+Column meanings:
+
+- `BinCenter`: center of each time bin. Use the same time unit you select in the
+  GUI, for example milliseconds if the GUI output unit is `ms`.
+- `BinContent`: observed counts in that bin.
+- `BinWidth`: width of the original bin. If this column is absent or blank, the
+  GUI infers the original bin spacing from adjacent `BinCenter` values.
+
+The histogram should include the full time range needed for the analysis. If you
+want to estimate background from reverse correlation, include negative-time bins
+and set the reverse-background range in the Bayesian design controls. The fit
+range should usually be positive time bins.
+
+The GUI rebins the loaded histogram using the selected bin width. The plotted
+histogram is shown after rebinning, and the fit rows are selected from the
+rebinned histogram.
+
+## Install and Run: Linux, WSL, or macOS
+
+From a terminal:
 
 ```bash
 cd standalone_decay_gui
@@ -22,17 +119,21 @@ cd standalone_decay_gui
 make run
 ```
 
-If the editable package install was interrupted, `make run` still uses `PYTHONPATH=src` so the local package can be found.
-The `Makefile` is for Linux/WSL/macOS and uses `.venv/bin/python`. On Windows, use the PowerShell scripts below.
+The install script creates `.venv`, installs the required Python packages, and
+installs this package in editable mode.
 
-To compile a distributable app folder with PyInstaller:
+If the editable package install was interrupted, `make run` still sets
+`PYTHONPATH=src`, so the local package can be found.
+
+To run with a custom result directory:
 
 ```bash
-make compile
-./dist/full-software-gui/full-software-gui
+PYTHONPATH=src .venv/bin/python -m full_software_gui_app --results-dir ./my_results
 ```
 
-## Windows PowerShell
+## Install and Run: Windows PowerShell
+
+From PowerShell:
 
 ```powershell
 cd standalone_decay_gui
@@ -40,24 +141,109 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 .\scripts\run.ps1
 ```
 
-To compile:
+To run with a custom result directory:
 
 ```powershell
+$env:PYTHONPATH = "src"
+.\.venv\Scripts\python.exe -m full_software_gui_app --results-dir .\my_results
+```
+
+## Basic GUI Workflow
+
+1. Load `data/nndc_nudat_data_export.csv` as the decay/literature CSV.
+2. Load your experimental histogram CSV.
+3. Enter the parent nucleus name, for example `72Co`.
+4. Choose the output time unit.
+5. Select daughter neutron branches and optional granddaughter branches.
+6. Click `Build decay chain`.
+7. Set the bin width, fit range, background model, and reverse-background range.
+8. Click `Prepare fit and preview model`.
+9. Open the Bayesian design tab and edit priors, branching mode, sampling
+   settings, and selected posterior plot variables.
+10. Click `Update model from current design`.
+11. Run the Bayesian model, or export the JSON/Python model runner.
+
+## Bayesian Model Options
+
+The GUI supports:
+
+- Poisson or normal likelihood.
+- Constant, linear, or exponential background.
+- Optional background prior estimates from reverse correlation bins.
+- Optional A0 estimate from early positive-time fit bins.
+- Fixed, Dirichlet, softmax, or normalized raw neutron branching models.
+- Fixed or uniform granddaughter branch priors.
+- User-selected posterior variables for distribution and corner plots.
+
+For lognormal priors, the GUI accepts natural-space `mu` and `sigma` inputs and
+the runner converts them to PyMC log-space parameters.
+
+## Results
+
+Bayesian runs save a full result folder under `bayesian_results/` by default.
+Each run folder includes:
+
+- `inference_data.nc`: ArviZ/PyMC InferenceData NetCDF file.
+- `data/run_payload.json`: full input payload used for the run.
+- `data/config.json`: model configuration.
+- `data/design.json`: Bayesian design and priors.
+- `data/fit_data.csv`: fit histogram rows.
+- `data/posterior_summary.csv` and `.json`.
+- `data/posterior_variables.json`.
+- `data/posterior_labels.json`.
+- posterior predictive samples when available.
+- plot PNGs for posterior predictive check, posterior distributions, and corner
+  plot.
+
+The posterior summary includes the derived parameter `b_neutron_sum`, defined as
+the sum of neutron-emission beta branches (`b_1n + b_2n + ...`) excluding the
+zero-neutron beta branch.
+
+## Exported Python Runner
+
+After preparing the fit preview and updating the Bayesian design, the GUI can
+export a standalone Python script. The exported script contains the current
+model design and fit rows and builds the PyMC model directly.
+
+Run an exported script from this package environment:
+
+```bash
+cd standalone_decay_gui
+PYTHONPATH=src .venv/bin/python /path/to/exported_model_runner.py
+```
+
+On Windows PowerShell:
+
+```powershell
+cd standalone_decay_gui
+$env:PYTHONPATH = "src"
+.\.venv\Scripts\python.exe C:\path\to\exported_model_runner.py
+```
+
+## Compile a Distributable App Folder
+
+Linux, WSL, or macOS:
+
+```bash
+cd standalone_decay_gui
+make compile
+./dist/full-software-gui/full-software-gui
+```
+
+Windows PowerShell:
+
+```powershell
+cd standalone_decay_gui
 powershell -ExecutionPolicy Bypass -File .\scripts\compile.ps1
 .\dist\full-software-gui\full-software-gui.exe
 ```
 
+PyMC and PyInstaller can take a while to install and compile, especially the
+first time.
+
 ## Notes
 
-- Bayesian runs save a full result folder under `bayesian_results/` by default.
-- Each result folder includes the `.nc` InferenceData file, posterior summary CSV/JSON, fit data CSV, run payload/config/design JSON, plot PNGs, GUI result JSON, and posterior predictive samples when available.
-- The GUI can export a standalone Python runner script after the fit preview and Bayesian design are ready. Run the exported script from this package environment with `PYTHONPATH=src .venv/bin/python /path/to/exported_script.py`.
-- Results include the derived posterior `b_neutron_sum`, which is `b1n + b2n + ...` and excludes `b0n`.
-- You can change the output directory with `--results-dir`:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m full_software_gui_app --results-dir ./my_results
-```
-
-- The GUI opens a local browser page. It does not require Tkinter.
-- PyMC and PyInstaller can take a while to install and compile, especially the first time.
+- The GUI opens a local browser page served from your machine. It does not
+  require Tkinter.
+- Do not commit `.venv`, `build`, `dist`, `bayesian_results`, or local output
+  folders. They are ignored by `.gitignore`.
