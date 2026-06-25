@@ -109,21 +109,72 @@ The GUI rebins the loaded histogram using the selected bin width. The plotted
 histogram is shown after rebinning, and the fit rows are selected from the
 rebinned histogram.
 
-## Install and Run: Linux, WSL, or macOS
+## Fresh Clone Quick Start
 
-From a terminal:
+First clone the repository and enter the project directory:
 
 ```bash
-cd standalone_decay_gui
+git clone https://github.com/tawfikgaballah/Bayesian-Inference-for--Decay-Half-Lives.git
+cd Bayesian-Inference-for--Decay-Half-Lives
+```
+
+The repository root is the standalone GUI package. The commands below should be
+run from that directory.
+
+## Install with Helper Scripts
+
+### Linux, WSL, or macOS
+
+```bash
 ./scripts/install.sh
 make run
 ```
 
-The install script creates `.venv`, installs the required Python packages, and
-installs this package in editable mode.
+### Windows PowerShell
 
-If the editable package install was interrupted, `make run` still sets
-`PYTHONPATH=src`, so the local package can be found.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+.\scripts\run.ps1
+```
+
+The install scripts create a local virtual environment named `.venv`, install
+the packages listed in `requirements.txt`, and install this project in editable
+mode. The virtual environment stays inside the project folder and is ignored by
+git.
+
+## Manual Environment Setup
+
+Use these commands if you want to see every step or if the helper script is not
+available on your system.
+
+### Linux, WSL, or macOS
+
+Create and activate the virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Upgrade `pip`, install requirements, and install the package in editable mode:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
+Run the GUI:
+
+```bash
+PYTHONPATH=src python -m full_software_gui_app
+```
+
+Equivalent Makefile command:
+
+```bash
+make run
+```
 
 To run with a custom result directory:
 
@@ -131,13 +182,40 @@ To run with a custom result directory:
 PYTHONPATH=src .venv/bin/python -m full_software_gui_app --results-dir ./my_results
 ```
 
-## Install and Run: Windows PowerShell
+### Windows PowerShell
 
-From PowerShell:
+Create and activate the virtual environment:
 
 ```powershell
-cd standalone_decay_gui
-powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+If PowerShell blocks activation, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+Upgrade `pip`, install requirements, and install the package in editable mode:
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
+Run the GUI:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m full_software_gui_app
+```
+
+Equivalent helper command:
+
+```powershell
 .\scripts\run.ps1
 ```
 
@@ -147,6 +225,67 @@ To run with a custom result directory:
 $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m full_software_gui_app --results-dir .\my_results
 ```
+
+## Compile a Distributable App Folder
+
+Compiling uses PyInstaller and can take several minutes, especially the first
+time because PyMC, PyTensor, ArviZ, Matplotlib, and their data files must be
+collected.
+
+### Linux, WSL, or macOS
+
+If you have not installed the environment yet:
+
+```bash
+./scripts/install.sh
+```
+
+Compile:
+
+```bash
+make compile
+```
+
+Run the compiled app:
+
+```bash
+./dist/full-software-gui/full-software-gui
+```
+
+Manual compile command:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m PyInstaller --clean --noconfirm full_software_gui_app.spec
+```
+
+### Windows PowerShell
+
+If you have not installed the environment yet:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+```
+
+Compile:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\compile.ps1
+```
+
+Run the compiled app:
+
+```powershell
+.\dist\full-software-gui\full-software-gui.exe
+```
+
+Manual compile command:
+
+```powershell
+.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm full_software_gui_app.spec
+```
+
+The compiled app folder is written to `dist/full-software-gui/`. Build artifacts
+under `build/` and `dist/` are ignored by git.
 
 ## Basic GUI Workflow
 
@@ -208,38 +347,17 @@ model design and fit rows and builds the PyMC model directly.
 Run an exported script from this package environment:
 
 ```bash
-cd standalone_decay_gui
+cd Bayesian-Inference-for--Decay-Half-Lives
 PYTHONPATH=src .venv/bin/python /path/to/exported_model_runner.py
 ```
 
 On Windows PowerShell:
 
 ```powershell
-cd standalone_decay_gui
+cd Bayesian-Inference-for--Decay-Half-Lives
 $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe C:\path\to\exported_model_runner.py
 ```
-
-## Compile a Distributable App Folder
-
-Linux, WSL, or macOS:
-
-```bash
-cd standalone_decay_gui
-make compile
-./dist/full-software-gui/full-software-gui
-```
-
-Windows PowerShell:
-
-```powershell
-cd standalone_decay_gui
-powershell -ExecutionPolicy Bypass -File .\scripts\compile.ps1
-.\dist\full-software-gui\full-software-gui.exe
-```
-
-PyMC and PyInstaller can take a while to install and compile, especially the
-first time.
 
 ## Notes
 
