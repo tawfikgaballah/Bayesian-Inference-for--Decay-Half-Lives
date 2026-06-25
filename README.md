@@ -30,7 +30,7 @@ data/nndc_nudat_data_export.csv
 ```
 
 is the literature input table used by the GUI to look up parent, daughter, and
-granddaughter states. It was exported from NNDC/NuDat-style decay information.
+granddaughter states. It was exported from NNDC/NuDat3 decay information.
 
 You can replace this file with a different literature source, but the CSV must
 keep the same column names and meanings. The GUI does not require the filename
@@ -139,8 +139,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 
 The install scripts create a local virtual environment named `.venv`, install
 the packages listed in `requirements.txt`, and install this project in editable
-mode. The virtual environment stays inside the project folder and is ignored by
-git.
+mode. 
 
 ## Manual Environment Setup
 
